@@ -1,0 +1,416 @@
+# ==========================================================================
+# Phase 5: Docker Deployment
+#
+# Containerizes the Distributed Campus Resource Sharing System:
+# Gateway + CS/IT/ENTC services + MongoDB instances + RabbitMQ.
+#
+# The application Dockerfiles use the monorepo root as their build context
+# because services need access to shared/ and proto/ folders.
+#
+# JWT_SECRET must be identical across gateway and all department services.
+# ==========================================================================
+
+networks:
+  campus-net:
+    driver: bridge
+
+volumes:
+  auth-mongo-data:
+  cs-mongo-data:
+  it-mongo-data:
+  entc-mongo-data:
+
+services:
+  # ------------------------------------------------------------------
+  # Infrastructure
+  # ------------------------------------------------------------------
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq
+    restart: unless-stopped
+
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+    networks:
+      - campus-net
+
+
+  auth-mongodb:
+    image: mongo:7
+    container_name: auth-mongodb
+    restart: unless-stopped
+
+    volumes:
+      - auth-mongo-data:/data/db
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "db.adminCommand('ping')"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    networks:
+      - campus-net
+
+
+  cs-mongodb:
+    image: mongo:7
+    container_name: cs-mongodb
+    restart: unless-stopped
+
+    volumes:
+      - cs-mongo-data:/data/db
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "db.adminCommand('ping')"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    networks:
+      - campus-net
+
+
+  it-mongodb:
+    image: mongo:7
+    container_name: it-mongodb
+    restart: unless-stopped
+
+    volumes:
+      - it-mongo-data:/data/db
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "db.adminCommand('ping')"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    networks:
+      - campus-net
+
+
+  entc-mongodb:
+    image: mongo:7
+    container_name: entc-mongodb
+    restart: unless-stopped
+
+    volumes:
+      - entc-mongo-data:/data/db
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "db.adminCommand('ping')"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    networks:
+      - campus-net
+
+
+  # ------------------------------------------------------------------
+  # CS Service
+  # ------------------------------------------------------------------
+
+  cs-service:
+    build:
+      context: .
+      dockerfile: services/cs-service/Dockerfile
+
+    container_name: cs-service
+    restart: unless-stopped
+
+    depends_on:
+      cs-mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ID: CS
+      DEPARTMENT: CS
+
+      PORT: 5001
+      GRPC_PORT: 6001
+
+      MONGO_URI: mongodb://cs-mongodb:27017/cs_db
+
+      JWT_SECRET: ${JWT_SECRET:-replace_with_a_long_random_secret}
+
+      RABBITMQ_URL: amqp://rabbitmq:5672
+
+      HEARTBEAT_INTERVAL_MS: 5000
+
+      IT_SERVICE_URL: http://it-service:5002
+      ENTC_SERVICE_URL: http://entc-service:5003
+
+    ports:
+      - "5001:5001"
+      - "6001:6001"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:5001/internal/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+    networks:
+      - campus-net
+
+
+  # ------------------------------------------------------------------
+  # IT Service
+  # ------------------------------------------------------------------
+
+  it-service:
+    build:
+      context: .
+      dockerfile: services/it-service/Dockerfile
+
+    container_name: it-service
+    restart: unless-stopped
+
+    depends_on:
+      it-mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ID: IT
+      DEPARTMENT: IT
+
+      PORT: 5002
+      GRPC_PORT: 6002
+
+      MONGO_URI: mongodb://it-mongodb:27017/it_db
+
+      JWT_SECRET: ${JWT_SECRET:-replace_with_a_long_random_secret}
+
+      RABBITMQ_URL: amqp://rabbitmq:5672
+
+      HEARTBEAT_INTERVAL_MS: 5000
+
+      CS_SERVICE_URL: http://cs-service:5001
+      ENTC_SERVICE_URL: http://entc-service:5003
+
+    ports:
+      - "5002:5002"
+      - "6002:6002"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:5002/internal/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+    networks:
+      - campus-net
+
+
+  # ------------------------------------------------------------------
+  # ENTC Service
+  # ------------------------------------------------------------------
+
+  entc-service:
+    build:
+      context: .
+      dockerfile: services/entc-service/Dockerfile
+
+    container_name: entc-service
+    restart: unless-stopped
+
+    depends_on:
+      entc-mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ID: ENTC
+      DEPARTMENT: ENTC
+
+      PORT: 5003
+      GRPC_PORT: 6003
+
+      MONGO_URI: mongodb://entc-mongodb:27017/entc_db
+
+      JWT_SECRET: ${JWT_SECRET:-replace_with_a_long_random_secret}
+
+      RABBITMQ_URL: amqp://rabbitmq:5672
+
+      HEARTBEAT_INTERVAL_MS: 5000
+
+      CS_SERVICE_URL: http://cs-service:5001
+      IT_SERVICE_URL: http://it-service:5002
+
+    ports:
+      - "5003:5003"
+      - "6003:6003"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:5003/internal/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+    networks:
+      - campus-net
+
+
+  # ------------------------------------------------------------------
+  # Gateway
+  # Auth + Routing + Aggregation + WebSocket Relay
+  # ------------------------------------------------------------------
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+
+    container_name: gateway
+    restart: unless-stopped
+
+    depends_on:
+      auth-mongodb:
+        condition: service_healthy
+
+      rabbitmq:
+        condition: service_healthy
+
+      cs-service:
+        condition: service_healthy
+
+      it-service:
+        condition: service_healthy
+
+      entc-service:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+
+      GATEWAY_PORT: 4000
+
+      JWT_SECRET: ${JWT_SECRET:-replace_with_a_long_random_secret}
+
+      AUTH_MONGO_URI: mongodb://auth-mongodb:27017/auth_db
+
+      CS_SERVICE_URL: http://cs-service:5001
+      IT_SERVICE_URL: http://it-service:5002
+      ENTC_SERVICE_URL: http://entc-service:5003
+
+      CS_GRPC_ADDRESS: cs-service:6001
+      IT_GRPC_ADDRESS: it-service:6002
+      ENTC_GRPC_ADDRESS: entc-service:6003
+
+      RABBITMQ_URL: amqp://rabbitmq:5672
+
+      HEARTBEAT_TIMEOUT_MS: 15000
+
+    ports:
+      - "4000:4000"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:4000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+    networks:
+      - campus-net
+
+  # ------------------------------------------------------------------
+  # Frontend
+  # React (Vite build) served by Nginx
+  # ------------------------------------------------------------------
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+
+    container_name: frontend
+    restart: unless-stopped
+
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+    ports:
+      - "5173:80"
+
+    networks:
+      - campus-net

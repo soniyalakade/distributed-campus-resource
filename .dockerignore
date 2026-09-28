@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.env
+**/.env
+*.log
+**/*.log
+npm-debug.log
+**/npm-debug.log
+.DS_Store
+.git
+.gitignore
+dist
+build
+*.md

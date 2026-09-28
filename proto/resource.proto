@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package campusresource;
+
+// ==========================================================================
+// Contract for Phase 3 Step 1 - distributed resource search over gRPC.
+//
+// Designed directly from the existing REST shapes already in production
+// use (Phase 2), so gRPC and REST return equivalent information for the
+// same underlying data:
+//   - Resource fields mirror services/<dept>-service/src/models/Resource.js
+//   - The search response mirrors gateway/src/services/searchAggregator.js's
+//     per-node result shape: { department, available, matches[] }
+//
+// Only SearchResource is defined here (Phase 3 Step 1 scope). Later
+// Phase 3 steps (P2P availability checks) and Phase 6 (Election,
+// RARequest/RAReply) will extend this file with additional services/
+// messages - this file is intentionally NOT trying to anticipate those
+// yet, per the "only implement what Step 1 needs" instruction.
+// ==========================================================================
+
+service ResourceService {
+  // Searches this department node's own resources by name (case-insensitive
+  // substring match, same semantics as the existing REST
+  // GET /internal/resources?search=<name> endpoint).
+  rpc SearchResource(SearchResourceRequest) returns (SearchResourceResponse);
+}
+
+message SearchResourceRequest {
+  string query = 1;          // resource name / search term, e.g. "Arduino"
+  string requestingNodeId = 2; // which node/gateway is asking (for logging/tracing)
+}
+
+// A single resource record, matching the fields returned by REST today.
+message ResourceInfo {
+  string resourceId = 1;
+  string name = 2;
+  string category = 3;
+  string department = 4;
+  string laboratory = 5;
+  int32 totalQuantity = 6;
+  int32 availableQuantity = 7;
+  int32 reservedQuantity = 8;
+  int32 borrowedQuantity = 9;
+  string condition = 10;
+}
+
+message SearchResourceResponse {
+  // STATUS values mirror the outcomes the Gateway must distinguish
+  // per the task spec: success, internal error, auth failure.
+  // (Unavailable/timeout are detected by the CALLER when the RPC itself
+  // fails or times out - they are not returned as a status by a node
+  // that successfully responded.)
+  enum Status {
+    SUCCESS = 0;
+    INTERNAL_ERROR = 1;
+    UNAUTHORIZED = 2;
+  }
+
+  Status status = 1;
+  string department = 2;
+  repeated ResourceInfo matches = 3;
+  int32 totalAvailable = 4;   // sum of availableQuantity across matches, computed server-side
+  string errorMessage = 5;    // populated only when status != SUCCESS
+}

@@ -1,0 +1,23 @@
+{
+  "name": "it-service",
+  "version": "1.0.0",
+  "description": "IT department node - Distributed Campus Resource Sharing System",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mongoose": "^8.5.1",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1",
+    "@grpc/grpc-js": "^1.10.9",
+    "@grpc/proto-loader": "^0.7.13",
+    "amqplib": "^0.10.4",
+    "axios": "^1.7.2"
+  }
+}
